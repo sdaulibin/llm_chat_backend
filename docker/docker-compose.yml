@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14
+    container_name: star_llm_postgres
+    environment:
+      POSTGRES_USER: starllm
+      POSTGRES_PASSWORD: starllm123
+      POSTGRES_DB: starllm_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

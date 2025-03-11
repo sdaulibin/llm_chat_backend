@@ -1,0 +1,22 @@
+# Dify API配置
+api:
+  # Dify API的基础URL
+  # base_url: "http://10.238.149.28:30000/"
+  base_url: "http://localhost/"
+  # Dify API的认证密钥
+  # key: "app-dRSe1A33PkkMZiXTp6JHrQdy"
+  key: "app-CVmaUK0HDbPgzocvGfjSjN4R"
+
+# 服务器配置
+server:
+  # 服务器监听端口
+  port: "8090"
+
+# 数据库配置
+database:
+  host: "localhost"
+  port: "5432"
+  user: "postgres"
+  password: "difyai123456"
+  dbname: "star_llm"
+  sslmode: "disable"
