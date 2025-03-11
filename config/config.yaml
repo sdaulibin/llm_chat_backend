@@ -5,7 +5,8 @@ api:
   base_url: "http://localhost/"
   # Dify API的认证密钥
   # key: "app-dRSe1A33PkkMZiXTp6JHrQdy"
-  key: "app-CVmaUK0HDbPgzocvGfjSjN4R"
+  # key: "app-CVmaUK0HDbPgzocvGfjSjN4R"
+  key: "app-2gyyyTpDY8OFhXB1mFB1MO3F"
 
 # 服务器配置
 server:

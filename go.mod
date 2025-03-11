@@ -1,5 +1,3 @@
-module github.com/binginx/star_llm_backend
-
 go 1.23.0
 
 toolchain go1.23.5
@@ -24,3 +22,5 @@ require (
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 )
+
+module github.com/binginx/star_llm_backend

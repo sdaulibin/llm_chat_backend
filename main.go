@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,64 +12,43 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 加载配置文件
-func loadConfig() (*config.Config, error) {
-	// 读取配置文件
+func main() {
+	// 加载配置文件
 	configFile, err := os.ReadFile("./config/config.yaml")
 	if err != nil {
-		return nil, fmt.Errorf("无法读取配置文件: %v", err)
+		log.Fatalf("无法读取配置文件: %v", err)
 	}
 
-	// 解析YAML
 	var cfg config.Config
 	err = yaml.Unmarshal(configFile, &cfg)
 	if err != nil {
-		return nil, fmt.Errorf("无法解析配置文件: %v", err)
-	}
-
-	// 验证必要的配置项
-	if cfg.API.BaseURL == "" {
-		return nil, fmt.Errorf("配置文件中缺少API基础URL")
-	}
-	if cfg.API.Key == "" {
-		return nil, fmt.Errorf("配置文件中缺少API密钥")
-	}
-	if cfg.Server.Port == "" {
-		// 使用默认端口
-		cfg.Server.Port = "8090"
+		log.Fatalf("无法解析配置文件: %v", err)
 	}
 
 	// 设置全局配置
 	config.SetConfig(cfg)
 
-	return &cfg, nil
-}
-
-func main() {
-	// 加载配置文件
-	cfg, err := loadConfig()
-	if err != nil {
-		log.Fatalf("加载配置文件失败: %v", err)
-	}
-
 	// 初始化数据库连接
-	dbConfig := cfg.Database
-	err = models.InitDB(dbConfig.Host, dbConfig.Port, dbConfig.User, dbConfig.Password, dbConfig.DBName, dbConfig.SSLMode)
+	_, err = models.InitDB(&cfg)
 	if err != nil {
-		log.Fatalf("初始化数据库失败: %v", err)
+		log.Fatalf("无法连接到数据库: %v", err)
 	}
+	defer models.Close()
 
 	// 创建控制器
-	proxyController := controllers.NewProxyController(cfg)
-	
-	// 创建路由管理器并设置路由
-	r := router.NewRouter(proxyController)
+	proxyController := controllers.NewProxyController(&cfg)
+	fileController := controllers.NewFileController(&cfg)
+
+	// 创建路由
+	r := router.NewRouter(proxyController, fileController)
 	r.SetupRoutes()
 
 	// 启动服务器
-	serverAddr := fmt.Sprintf(":%s", cfg.Server.Port)
-	fmt.Printf("Server started on port %s\n", cfg.Server.Port)
-	fmt.Printf("Proxying requests to Dify API at %s\n", cfg.API.BaseURL)
-	fmt.Printf("Using API Key from config file\n")
-	log.Fatal(http.ListenAndServe(serverAddr, nil))
+	port := cfg.Server.Port
+	if port == "" {
+		port = "8090"
+	}
+
+	log.Printf("服务器启动在 :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
