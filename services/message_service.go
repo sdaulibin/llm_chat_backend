@@ -4,7 +4,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/binginx/star_llm_backend/models"
+	"star_llm_backend/models"
+
 	"github.com/google/uuid"
 )
 
@@ -22,7 +23,7 @@ func SaveMessageToDB(sessionID, query, answer, userID, conversationID string, me
 		IsSafe:         false,
 		IsLike:         false,
 	}
-	
+
 	// 如果提供了messageID，则使用它，否则生成一个新的UUID
 	if len(messageID) > 0 && messageID[0] != "" {
 		message.MessageID = messageID[0]
@@ -30,6 +31,6 @@ func SaveMessageToDB(sessionID, query, answer, userID, conversationID string, me
 		message.MessageID = uuid.New().String()
 	}
 
-	log.Printf("[服务] 保存消息到数据库: message_id=%s", message.MessageID)
+	log.Printf("[服务] 保存消息到数据库: message_id=%s\n >>>>content:%s", message.MessageID, message.Answer)
 	return models.CreateMessage(message)
 }

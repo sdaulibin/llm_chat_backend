@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/binginx/star_llm_backend/config"
+	"star_llm_backend/config"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -15,6 +16,8 @@ var sqlDB *sql.DB
 
 // InitDB 初始化数据库连接
 func InitDB(dbConfig *config.Config) (*gorm.DB, error) {
+	fmt.Printf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		dbConfig.Database.Host, dbConfig.Database.Port, dbConfig.Database.User, dbConfig.Database.Password, dbConfig.Database.DBName, dbConfig.Database.SSLMode)
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		dbConfig.Database.Host, dbConfig.Database.Port, dbConfig.Database.User, dbConfig.Database.Password, dbConfig.Database.DBName, dbConfig.Database.SSLMode)
 
@@ -31,10 +34,10 @@ func InitDB(dbConfig *config.Config) (*gorm.DB, error) {
 	}
 
 	// 自动迁移数据库表
-	err = DB.AutoMigrate(&Message{})
-	if err != nil {
-		return nil, fmt.Errorf("自动迁移数据库表失败: %v", err)
-	}
+	// err = DB.AutoMigrate(&Message{})
+	// if err != nil {
+	// 	return nil, fmt.Errorf("自动迁移数据库表失败: %v", err)
+	// }
 
 	log.Println("成功连接到数据库并迁移表")
 	return DB, nil

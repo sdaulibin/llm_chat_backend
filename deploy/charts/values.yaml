@@ -1,0 +1,82 @@
+replicaCount: 1
+
+image:
+  repository: harbor.devops.qdb.com/star/star_llm_backend
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: "sllb"
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+command: ["/app/star_llm_backend"]
+# args:
+#   - "-c"
+#   - "/app/star_llm_backend  > /app/logs/star_llm_backend.log 2>&1"
+
+
+ports:  
+  - name: sllb  #第一个为业务容器port
+    containerPort: 8080
+    protocol: TCP
+
+service:
+  type: ClusterIP
+  port:
+    - name: sllb
+      protocol: TCP
+      port: 8090
+      targetPort: 8090
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations: 
+    nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+    nginx.ingress.kubernetes.io/set-real-ip-from: 0.0.0.0/0
+    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+  hosts:
+    - host: sllb.devops.qdb.com
+      paths:
+        - path: /chat/api
+          pathType: Prefix
+          servicePortName: sllb
+          serviceName: sllb
+        - path: /chat/static
+          pathType: Prefix
+          servicePortName: sllc
+          serviceName: sllc
+        
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources: 
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  limits:
+    cpu: 2000m
+    memory: 2048Mi
+  requests:
+    cpu: 2000m
+    memory: 2048Mi
+
+#nodeSelector:
+  #kubernetes.io/hostname: "devwork1"
+
+
+tolerations: []
+
+affinity: {}
+
+
+envs: []

@@ -5,12 +5,21 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/binginx/star_llm_backend/config"
-	"github.com/binginx/star_llm_backend/controllers"
-	"github.com/binginx/star_llm_backend/models"
-	"github.com/binginx/star_llm_backend/router"
+	"star_llm_backend/config"
+	"star_llm_backend/controllers"
+	"star_llm_backend/models"
+	"star_llm_backend/router"
+
 	"gopkg.in/yaml.v3"
 )
+
+// getEnvOrDefault 从环境变量获取值，如果环境变量不存在则返回默认值
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 func main() {
 	// 加载配置文件
@@ -24,6 +33,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("无法解析配置文件: %v", err)
 	}
+
+	// 优先使用环境变量覆盖配置
+	cfg.API.BaseURL = getEnvOrDefault("DIFY_API_BASE_URL", cfg.API.BaseURL)
+	cfg.API.Key = getEnvOrDefault("DIFY_API_KEY", cfg.API.Key)
+	cfg.Server.Port = getEnvOrDefault("SERVER_PORT", cfg.Server.Port)
+	cfg.Database.Host = getEnvOrDefault("DB_HOST", cfg.Database.Host)
+	cfg.Database.Port = getEnvOrDefault("DB_PORT", cfg.Database.Port)
+	cfg.Database.User = getEnvOrDefault("DB_USER", cfg.Database.User)
+	cfg.Database.Password = getEnvOrDefault("DB_PASSWORD", cfg.Database.Password)
+	cfg.Database.DBName = getEnvOrDefault("DB_NAME", cfg.Database.DBName)
+	cfg.Database.SSLMode = getEnvOrDefault("DB_SSLMODE", cfg.Database.SSLMode)
 
 	// 设置全局配置
 	config.SetConfig(cfg)

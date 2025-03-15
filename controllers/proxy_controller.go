@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/binginx/star_llm_backend/config"
-	"github.com/binginx/star_llm_backend/models"
-	"github.com/binginx/star_llm_backend/services"
-	"github.com/binginx/star_llm_backend/types"
+	"star_llm_backend/config"
+	"star_llm_backend/models"
+	"star_llm_backend/services"
+	"star_llm_backend/types"
 )
 
 // ProxyController 处理代理请求的控制器
@@ -38,7 +38,7 @@ func (pc *ProxyController) ProxyToDify(w http.ResponseWriter, r *http.Request) {
 	// 为所有响应设置CORS头
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	// 1. 提取API路径
-	apiPath := strings.TrimPrefix(r.URL.Path, "/")
+	apiPath := strings.TrimPrefix(r.URL.Path, "/chat/api/")
 
 	// 构建完整URL，包括查询参数
 	difyURL := pc.Config.API.BaseURL + apiPath
@@ -165,7 +165,9 @@ func (pc *ProxyController) HandleFeedbacks(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// 从URL中提取message_id
-	pathParts := strings.Split(r.URL.Path, "/")
+	apiPath := strings.TrimPrefix(r.URL.Path, "/chat/api/")
+	pathParts := strings.Split(apiPath, "/")
+	log.Printf("[pathParts]: %s", pathParts)
 	if len(pathParts) < 3 {
 		log.Printf("[错误] 无效的URL路径: %s", r.URL.Path)
 		http.Error(w, "Invalid URL path", http.StatusBadRequest)
@@ -197,7 +199,7 @@ func (pc *ProxyController) HandleFeedbacks(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	log.Printf("[提取] 反馈信息: rating=%s, user=%s, session_id=%s", 
+	log.Printf("[提取] 反馈信息: rating=%s, user=%s, session_id=%s",
 		feedbackRequest.Rating, feedbackRequest.User, feedbackRequest.SessionID)
 
 	// 根据rating更新is_like字段
@@ -210,7 +212,7 @@ func (pc *ProxyController) HandleFeedbacks(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	log.Printf("[成功] 已更新消息点赞状态: message_id=%s, session_id=%s, is_like=%v", 
+	log.Printf("[成功] 已更新消息点赞状态: message_id=%s, session_id=%s, is_like=%v",
 		messageID, feedbackRequest.SessionID, isLike)
 
 	// 重新设置请求体，以便转发到Dify

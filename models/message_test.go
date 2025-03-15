@@ -3,7 +3,8 @@ package models_test
 import (
 	"testing"
 
-	"github.com/binginx/star_llm_backend/models"
+	"star_llm_backend/models"
+
 	"github.com/google/uuid"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -24,21 +25,21 @@ func TestMessageOperations(t *testing.T) {
 	}
 
 	// 自动迁移数据库表
-	err = db.AutoMigrate(&models.Message{}) // Use models.Message
-	if err != nil {
-		t.Fatalf("自动迁移数据库表失败: %v", err)
-	}
+	// err = db.AutoMigrate(&models.Message{}) // Use models.Message
+	// if err != nil {
+	// 	t.Fatalf("自动迁移数据库表失败: %v", err)
+	// }
 
 	// 创建新消息
 	message := &models.Message{ // Use models.Message
-		UserID:        "testuser",
-		SessionID:     "testsession",
-		MessageID:     uuid.New().String(),
+		UserID:         "testuser",
+		SessionID:      "testsession",
+		MessageID:      uuid.New().String(),
 		ConversationID: uuid.New().String(),
-		Query:         "Test query",
-		Answer:        "Test answer",
-		IsSafe:        true,
-		IsLike:        false,
+		Query:          "Test query",
+		Answer:         "Test answer",
+		IsSafe:         true,
+		IsLike:         false,
 	}
 
 	err = db.Create(message).Error

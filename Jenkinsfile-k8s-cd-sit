@@ -1,0 +1,168 @@
+@Library("bqdlib") _
+
+//import
+def getcode = new org.devops.GetCode()
+def builds = new org.devops.Builds()
+def mysonar = new org.devops.Sonar()
+def mynexus = new org.devops.Nexus()
+def gitlab = new org.devops.Gitlab()
+def sat = new org.devops.Sat()
+def qax = new org.devops.QaxCodeScan()
+def helm = new org.devops.Helmcd()
+def jj = new org.devops.Jenkins()
+def cc = new org.devops.Creditcard()
+
+
+pipeline {
+
+
+    agent {
+        node {
+            label "star"
+            customWorkspace "/home/jenkins/workspace/${env.JOB_NAME}_${env.BUILD_NUMBER}"
+        }
+    }
+
+    options{
+        skipDefaultCheckout true
+        disableConcurrentBuilds()
+    }
+
+    // 构建参数
+    parameters {
+        choice(choices: ['JDK8','JDK11'], description: 'JDK版本', name: 'javaVersion')
+        string(name: 'srcUrl', defaultValue: 'http://gitlab.qdccb.cn/star/star_llm_backend.git', description: 'Git repository URL')
+        string(name: 'projectName', defaultValue: 'sllb', description: 'project name')
+        string(name: 'groupName', defaultValue: 'star', description: 'Git group name, Need full path include sub group')
+        string(name: 'scmUrl', defaultValue: 'gitlab.qdb.com', description: 'Git URL')
+        string(name: 'gitlabTokenByUserPassword', defaultValue: '', description: 'gitlab credential by lvchentao username and password')
+        string(name: 'HARBOR_URL', defaultValue: 'harbor.devops.qdb.com', description: 'harbor url')
+        string(name: 'HARBOR_PROJECT', defaultValue: 'star', description: 'harbor project name')
+        choice(choices: ['false', 'true'], description: '是否指定机器部署', name: 'SPECIFY_NODE')
+        string(name: 'DESTINATION_KEY', defaultValue: 'qdccb.cn/role', description: '要部署的目标机器')
+        string(name: 'DESTINATION_VALUE', defaultValue: 'star', description: '要部署的目标机器')
+        string(name: 'HELM_NS', defaultValue: 'star-sit', description: 'k8s namespace')
+        string(name: 'ftpCredential', defaultValue: 'devops-test-ftp-credential', description: 'ftp credential')
+        string(name: 'ftpPath', defaultValue: '', description: 'a ftp relative path')
+        string(name: 'ftpAddr', defaultValue: '', description: 'ftp ip address')
+        string(name: 'ingress', defaultValue: 'nginx-star-sit', description: 'ingress class name')
+        string(name: 'replicas', defaultValue: '1', description: 'replica count')
+        string(name: 'ingressHost', defaultValue: 'aisit.qdccb.cn', description: 'ingress host')
+        string(name: 'DIFY_API_BASE_URL', defaultValue: 'http://localhost/', description: 'Dify API 基础URL')
+        string(name: 'DIFY_API_KEY', defaultValue: 'app-2gyyyTpDY8OFhXB1mFB1MO3F', description: 'Dify API Key')
+        string(name: 'SERVER_PORT', defaultValue: '8090', description: '服务器端口')
+        string(name: 'DB_HOST', defaultValue: 'localhost', description: '数据库主机')
+        string(name: 'DB_PORT', defaultValue: '5432', description: '数据库端口')
+        string(name: 'DB_USER', defaultValue: 'postgres', description: '数据库用户')
+        string(name: 'DB_PASSWORD', defaultValue: 'difyai123456', description: '数据库密码')
+        string(name: 'DB_NAME', defaultValue: 'star_llm', description: '数据库名称')
+        string(name: 'DB_SSLMODE', defaultValue: 'disable', description: '数据库SSL模式')
+    }
+    stages {
+
+        stage("Init"){
+            steps{
+                script{
+                    builds.InitSteps()
+                }
+            }
+        }
+
+        stage('Get sit Branches') {
+            steps {
+                script {
+                    getcode.GetCode("master", "${params.srcUrl}", env.gitlabTokenByUserPassword)
+                    getcode.GetCode("master", "${params.srcUrl}", env.gitlabTokenByUserPassword)
+                }
+            }
+        }
+
+        stage("Get Gitlab Info") {
+            steps {
+                script {
+                    gitlab.GetBranchCommitID("master")
+                    echo sh(script: 'env', returnStdout: true)
+                }
+            }
+        }
+
+
+        stage('Build Docker Image with nerdctl') {
+            steps {
+                script {
+                    sh """
+                    export DOCKER_CONFIG="/kaniko/.docker/"
+                    export RELEASE_REGISTRY=${env.HARBOR_URL}/${env.HARBOR_PROJECT}
+                    export RELEASE_VERSION=${env.GITLAB_COMMIT_ID}
+                    export RELEASE_IMAGE=\${RELEASE_REGISTRY}/${env.projectName}:\${RELEASE_VERSION}
+                    make -e  release-image.amd64
+                    nerdctl --insecure-registry=true push \${RELEASE_IMAGE}-amd64
+                    """
+                }
+            }
+        }
+
+        stage('Helm Deploy Application') {
+            steps {
+                script {
+                    def node_selected = env.SPECIFY_NODE
+                    if(node_selected == 'true') {
+                        sh '''
+                           export DOCKER_CONFIG="/kaniko/.docker/"
+                           helm upgrade --install ${projectName} \
+                           deploy/charts --namespace ${HELM_NS} --create-namespace \
+                           -f deploy/charts/values.yaml --set nodeSelector."${DESTINATION_KEY}"="${DESTINATION_VALUE}" \
+                           --set image.repository=${HARBOR_URL}/${HARBOR_PROJECT}/${projectName} \
+                           --set ingress.className=${ingress} \
+                           --set image.tag=${GITLAB_COMMIT_ID}-amd64 \
+                           --set ingress.hosts[0].host=${ingressHost} \
+                           --set replicaCount=${replicas} \
+                           --set envs[0].name="DIFY_API_BASE_URL" --set envs[0].value=\\\"${DIFY_API_BASE_URL}\\\" \
+                           --set envs[1].name="DIFY_API_KEY" --set envs[1].value=\\\"${DIFY_API_KEY}\\\" \
+                           --set envs[2].name="SERVER_PORT" --set envs[2].value=\\\"${SERVER_PORT}\\\" \
+                           --set envs[3].name="DB_HOST" --set envs[3].value=\\\"${DB_HOST}\\\" \
+                           --set envs[4].name="DB_PORT" --set envs[4].value=\\\"${DB_PORT}\\\" \
+                           --set envs[5].name="DB_USER" --set envs[5].value=\\\"${DB_USER}\\\" \
+                           --set envs[6].name="DB_PASSWORD" --set envs[6].value=\\\"${DB_PASSWORD}\\\" \
+                           --set envs[7].name="DB_NAME" --set envs[7].value=\\\"${DB_NAME}\\\" \
+                           --set envs[8].name="DB_SSLMODE" --set envs[8].value=\\\"${DB_SSLMODE}\\\" 
+                        '''
+                    } else {
+                        sh '''
+                           helm upgrade --install ${projectName} \
+                           deploy/charts --namespace ${HELM_NS} --create-namespace \
+                           -f deploy/charts/values.yaml \
+                           --set image.repository=${HARBOR_URL}/${HARBOR_PROJECT}/${projectName} \
+                           --set image.tag=${GITLAB_COMMIT_ID}-amd64 \
+                           --set ingress.className=${ingress} \
+                           --set ingress.hosts[0].host=${ingressHost} \
+                           --set replicaCount=${replicas} \
+                           --set envs[0].name="DIFY_API_BASE_URL" --set envs[0].value=\\\"${DIFY_API_BASE_URL}\\\" \
+                           --set envs[1].name="DIFY_API_KEY" --set envs[1].value=\\\"${DIFY_API_KEY}\\\" \
+                           --set envs[2].name="SERVER_PORT" --set envs[2].value=\\\"${SERVER_PORT}\\\" \
+                           --set envs[3].name="DB_HOST" --set envs[3].value=\\\"${DB_HOST}\\\" \
+                           --set envs[4].name="DB_PORT" --set envs[4].value=\\\"${DB_PORT}\\\" \
+                           --set envs[5].name="DB_USER" --set envs[5].value=\\\"${DB_USER}\\\" \
+                           --set envs[6].name="DB_PASSWORD" --set envs[6].value=\\\"${DB_PASSWORD}\\\" \
+                           --set envs[7].name="DB_NAME" --set envs[7].value=\\\"${DB_NAME}\\\" \
+                           --set envs[8].name="DB_SSLMODE" --set envs[8].value=\\\"${DB_SSLMODE}\\\" 
+                        '''
+                    }
+                    sh """
+                        helm get manifest --namespace ${env.HELM_NS} ${env.projectName}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                // 清理特定工作目录
+                cleanWs()
+            }
+        }
+    }
+
+}

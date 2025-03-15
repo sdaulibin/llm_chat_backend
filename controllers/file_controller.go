@@ -3,7 +3,6 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
@@ -11,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/binginx/star_llm_backend/config"
+	"star_llm_backend/config"
+	"star_llm_backend/services"
 )
 
 // FileController 处理文件上传的控制器
@@ -86,11 +85,18 @@ func (fc *FileController) HandleFileUpload(w http.ResponseWriter, r *http.Reques
 	// 检查文件类型
 	fileExt := filepath.Ext(handler.Filename)
 	validExts := map[string]bool{
-		".png":  true,
-		".jpg":  true,
-		".jpeg": true,
-		".webp": true,
-		".gif":  true,
+		// 文本和文档格式
+		".txt":      true,
+		".markdown": true,
+		".mdx":      true,
+		".pdf":      true,
+		".html":     true,
+		".xlsx":     true,
+		".xls":      true,
+		".docx":     true,
+		".csv":      true,
+		".md":       true,
+		".htm":      true,
 	}
 
 	if !validExts[strings.ToLower(fileExt)] {
@@ -103,12 +109,8 @@ func (fc *FileController) HandleFileUpload(w http.ResponseWriter, r *http.Reques
 	userDir := filepath.Join(fc.UploadDir, userID)
 	os.MkdirAll(userDir, 0755)
 
-	// 生成唯一文件名
-	timestamp := time.Now().UnixNano()
-	localFileName := fmt.Sprintf("%d%s", timestamp, fileExt)
-	localFilePath := filepath.Join(userDir, localFileName)
-
 	// 保存文件到本地
+	localFilePath := filepath.Join(userDir, handler.Filename)
 	localFile, err := os.Create(localFilePath)
 	if err != nil {
 		log.Printf("[错误] 创建本地文件失败: %v", err)
@@ -137,7 +139,7 @@ func (fc *FileController) HandleFileUpload(w http.ResponseWriter, r *http.Reques
 	log.Printf("[文件上传] 文件已保存到本地: %s", localFilePath)
 
 	// 转发文件到Dify
-	apiPath := strings.TrimPrefix(r.URL.Path, "/")
+	apiPath := strings.TrimPrefix(r.URL.Path, "/chat/api/")
 	difyURL := fc.Config.API.BaseURL + apiPath
 	log.Printf("[文件上传] 地址: %s", difyURL)
 	// 创建一个新的multipart writer
@@ -229,11 +231,22 @@ func (fc *FileController) HandleFileUpload(w http.ResponseWriter, r *http.Reques
 	w.Write(respBody)
 
 	// 记录上传成功信息
-	if difyResp.StatusCode == http.StatusOK {
+	if difyResp.StatusCode == http.StatusCreated {
 		var fileInfo map[string]interface{}
 		if err := json.Unmarshal(respBody, &fileInfo); err == nil {
 			fileID, _ := fileInfo["id"].(string)
 			log.Printf("[文件上传] 文件上传成功: 本地路径=%s, Dify文件ID=%s", localFilePath, fileID)
+
+			// 获取文件大小
+			fileSize := int64(len(fileBytes))
+
+			// 保存文件信息到数据库
+			dbFileID, err := services.SaveFileToDB(userID, handler.Filename, handler.Filename, localFilePath, fileID, fileSize)
+			if err != nil {
+				log.Printf("[错误] 保存文件信息到数据库失败: %v", err)
+			} else {
+				log.Printf("[文件上传] 文件信息已保存到数据库: file_id=%s, 原始文件名=%s, 文件大小=%d字节", dbFileID, handler.Filename, fileSize)
+			}
 		}
 	}
 }
