@@ -90,13 +90,22 @@ pipeline {
         stage('Build Docker Image with nerdctl') {
             steps {
                 script {
+                    // 将变量设置为Jenkins环境变量，使其在整个流水线中可用
+                    env.RELEASE_REGISTRY = "${env.HARBOR_URL}/${env.HARBOR_PROJECT}"
+                    env.RELEASE_VERSION = "${env.GITLAB_COMMIT_ID}"
+                    env.RELEASE_IMAGE = "${env.RELEASE_REGISTRY}/${env.projectName}:${env.RELEASE_VERSION}"
+                    
+                    echo "设置环境变量："
+                    echo "RELEASE_REGISTRY: ${env.RELEASE_REGISTRY}"
+                    echo "RELEASE_VERSION: ${env.RELEASE_VERSION}"
+                    echo "RELEASE_IMAGE: ${env.RELEASE_IMAGE}"
                     sh """
                     export DOCKER_CONFIG="/kaniko/.docker/"
-                    export RELEASE_REGISTRY=${env.HARBOR_URL}/${env.HARBOR_PROJECT}
-                    export RELEASE_VERSION=${env.GITLAB_COMMIT_ID}
-                    export RELEASE_IMAGE=\${RELEASE_REGISTRY}/${env.projectName}:\${RELEASE_VERSION}
-                    make -e  release-image.amd64
-                    nerdctl --insecure-registry=true push \${RELEASE_IMAGE}-amd64
+                    export RELEASE_REGISTRY=${env.RELEASE_REGISTRY}
+                    export RELEASE_VERSION=${env.RELEASE_VERSION}
+                    export RELEASE_IMAGE=${env.RELEASE_IMAGE}
+                    make -e release-image.amd64
+                    nerdctl --insecure-registry=true push ${env.RELEASE_IMAGE}-amd64
                     """
                 }
             }
@@ -107,46 +116,46 @@ pipeline {
                 script {
                     def node_selected = env.SPECIFY_NODE
                     if(node_selected == 'true') {
-                        sh '''
+                        sh """
                            export DOCKER_CONFIG="/kaniko/.docker/"
-                           helm upgrade --install ${projectName} \
-                           deploy/charts --namespace ${HELM_NS} --create-namespace \
-                           -f deploy/charts/values.yaml --set nodeSelector."${DESTINATION_KEY}"="${DESTINATION_VALUE}" \
-                           --set image.repository=${HARBOR_URL}/${HARBOR_PROJECT}/${projectName} \
-                           --set ingress.className=${ingress} \
-                           --set image.tag=${GITLAB_COMMIT_ID}-amd64 \
-                           --set ingress.hosts[0].host=${ingressHost} \
-                           --set replicaCount=${replicas} \
-                           --set envs[0].name="DIFY_API_BASE_URL" --set envs[0].value=\\\"${DIFY_API_BASE_URL}\\\" \
-                           --set envs[1].name="DIFY_API_KEY" --set envs[1].value=\\\"${DIFY_API_KEY}\\\" \
-                           --set envs[2].name="SERVER_PORT" --set envs[2].value=\\\"${SERVER_PORT}\\\" \
-                           --set envs[3].name="DB_HOST" --set envs[3].value=\\\"${DB_HOST}\\\" \
-                           --set envs[4].name="DB_PORT" --set envs[4].value=\\\"${DB_PORT}\\\" \
-                           --set envs[5].name="DB_USER" --set envs[5].value=\\\"${DB_USER}\\\" \
-                           --set envs[6].name="DB_PASSWORD" --set envs[6].value=\\\"${DB_PASSWORD}\\\" \
-                           --set envs[7].name="DB_NAME" --set envs[7].value=\\\"${DB_NAME}\\\" \
-                           --set envs[8].name="DB_SSLMODE" --set envs[8].value=\\\"${DB_SSLMODE}\\\" 
-                        '''
+                           helm upgrade --install ${env.projectName} \\
+                           deploy/charts --namespace ${env.HELM_NS} --create-namespace \\
+                           -f deploy/charts/values.yaml --set nodeSelector."${env.DESTINATION_KEY}"="${env.DESTINATION_VALUE}" \\
+                           --set image.repository=${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName} \\
+                           --set ingress.className=${env.ingress} \\
+                           --set image.tag=${env.RELEASE_VERSION}-amd64 \\
+                           --set ingress.hosts[0].host=${env.ingressHost} \\
+                           --set replicaCount=${env.replicas} \\
+                           --set envs[0].name="DIFY_API_BASE_URL" --set envs[0].value=\\\"${env.DIFY_API_BASE_URL}\\\" \\
+                           --set envs[1].name="DIFY_API_KEY" --set envs[1].value=\\\"${env.DIFY_API_KEY}\\\" \\
+                           --set envs[2].name="SERVER_PORT" --set envs[2].value=\\\"${env.SERVER_PORT}\\\" \\
+                           --set envs[3].name="DB_HOST" --set envs[3].value=\\\"${env.DB_HOST}\\\" \\
+                           --set envs[4].name="DB_PORT" --set envs[4].value=\\\"${env.DB_PORT}\\\" \\
+                           --set envs[5].name="DB_USER" --set envs[5].value=\\\"${env.DB_USER}\\\" \\
+                           --set envs[6].name="DB_PASSWORD" --set envs[6].value=\\\"${env.DB_PASSWORD}\\\" \\
+                           --set envs[7].name="DB_NAME" --set envs[7].value=\\\"${env.DB_NAME}\\\" \\
+                           --set envs[8].name="DB_SSLMODE" --set envs[8].value=\\\"${env.DB_SSLMODE}\\\"
+                        """
                     } else {
-                        sh '''
-                           helm upgrade --install ${projectName} \
-                           deploy/charts --namespace ${HELM_NS} --create-namespace \
-                           -f deploy/charts/values.yaml \
-                           --set image.repository=${HARBOR_URL}/${HARBOR_PROJECT}/${projectName} \
-                           --set image.tag=${GITLAB_COMMIT_ID}-amd64 \
-                           --set ingress.className=${ingress} \
-                           --set ingress.hosts[0].host=${ingressHost} \
-                           --set replicaCount=${replicas} \
-                           --set envs[0].name="DIFY_API_BASE_URL" --set envs[0].value=\\\"${DIFY_API_BASE_URL}\\\" \
-                           --set envs[1].name="DIFY_API_KEY" --set envs[1].value=\\\"${DIFY_API_KEY}\\\" \
-                           --set envs[2].name="SERVER_PORT" --set envs[2].value=\\\"${SERVER_PORT}\\\" \
-                           --set envs[3].name="DB_HOST" --set envs[3].value=\\\"${DB_HOST}\\\" \
-                           --set envs[4].name="DB_PORT" --set envs[4].value=\\\"${DB_PORT}\\\" \
-                           --set envs[5].name="DB_USER" --set envs[5].value=\\\"${DB_USER}\\\" \
-                           --set envs[6].name="DB_PASSWORD" --set envs[6].value=\\\"${DB_PASSWORD}\\\" \
-                           --set envs[7].name="DB_NAME" --set envs[7].value=\\\"${DB_NAME}\\\" \
-                           --set envs[8].name="DB_SSLMODE" --set envs[8].value=\\\"${DB_SSLMODE}\\\" 
-                        '''
+                        sh """
+                           helm upgrade --install ${env.projectName} \\
+                           deploy/charts --namespace ${env.HELM_NS} --create-namespace \\
+                           -f deploy/charts/values.yaml \\
+                           --set image.repository=${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName} \\
+                           --set image.tag=${env.RELEASE_VERSION}-amd64 \\
+                           --set ingress.className=${env.ingress} \\
+                           --set ingress.hosts[0].host=${env.ingressHost} \\
+                           --set replicaCount=${env.replicas} \\
+                           --set envs[0].name="DIFY_API_BASE_URL" --set envs[0].value=\\\"${env.DIFY_API_BASE_URL}\\\" \\
+                           --set envs[1].name="DIFY_API_KEY" --set envs[1].value=\\\"${env.DIFY_API_KEY}\\\" \\
+                           --set envs[2].name="SERVER_PORT" --set envs[2].value=\\\"${env.SERVER_PORT}\\\" \\
+                           --set envs[3].name="DB_HOST" --set envs[3].value=\\\"${env.DB_HOST}\\\" \\
+                           --set envs[4].name="DB_PORT" --set envs[4].value=\\\"${env.DB_PORT}\\\" \\
+                           --set envs[5].name="DB_USER" --set envs[5].value=\\\"${env.DB_USER}\\\" \\
+                           --set envs[6].name="DB_PASSWORD" --set envs[6].value=\\\"${env.DB_PASSWORD}\\\" \\
+                           --set envs[7].name="DB_NAME" --set envs[7].value=\\\"${env.DB_NAME}\\\" \\
+                           --set envs[8].name="DB_SSLMODE" --set envs[8].value=\\\"${env.DB_SSLMODE}\\\"
+                        """
                     }
                     sh """
                         helm get manifest --namespace ${env.HELM_NS} ${env.projectName}

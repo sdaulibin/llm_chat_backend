@@ -13,6 +13,8 @@ import (
 	"star_llm_backend/models"
 	"star_llm_backend/services"
 	"star_llm_backend/types"
+
+	"github.com/google/uuid"
 )
 
 // ProxyController 处理代理请求的控制器
@@ -71,17 +73,65 @@ func (pc *ProxyController) ProxyToDify(w http.ResponseWriter, r *http.Request) {
 	var query string
 	var sessionID string
 	var conversationID string
+	//var taskId string
+	var currentID string
+	var fileId string
 
 	if strings.Contains(apiPath, "chat-messages") && r.Method == "POST" {
 		if err := json.Unmarshal(bodyBytes, &chatRequest); err == nil {
 			// 提取用户ID、查询内容、会话ID和对话ID
+			currentID = uuid.NewString()
 			userID = chatRequest.User
 			query = chatRequest.Query
 			sessionID = chatRequest.SeesionID
-			conversationID = chatRequest.ConversationID
+			if len(chatRequest.ConversationID) > 0 {
+				conversationID = chatRequest.ConversationID
+			} else {
+				conversationID = uuid.Nil.String()
+			}
 			log.Printf("[提取] 用户ID: %s, 输入: %s, 会话ID: %s, 对话ID: %s", userID, query, sessionID, conversationID)
+
+			// 提取文件信息
+			if len(chatRequest.Files) > 0 {
+				for _, fileInfo := range chatRequest.Files {
+					if fileInfo.Type == "document" && fileInfo.TransferMethod == "local_file" {
+						log.Printf("[提取] 文件上传ID: %s, 类型: %s, 传输方式: %s",
+							fileInfo.UploadFileID, fileInfo.Type, fileInfo.TransferMethod)
+						fileId = fileInfo.UploadFileID
+					}
+				}
+			} else {
+				fileId = uuid.Nil.String()
+			}
+
+			// 检查是否需要保存消息到数据库
+			if sessionID != "" && query != "" {
+				err := services.SaveMessageToDB(currentID, sessionID, query, "", userID, conversationID, fileId, uuid.Nil.String())
+				if err != nil {
+					log.Printf("[错误] 保存消息到数据库失败: %v", err)
+				}
+			}
 		} else {
 			log.Printf("[错误] 解析chat-messages请求体失败: %v", err)
+		}
+	}
+
+	if strings.Contains(apiPath, "chat-messages") && strings.Contains(apiPath, "/stop") && r.Method == "POST" {
+
+		// 从URL中提取message_id
+		apiPath := strings.TrimPrefix(r.URL.Path, "/chat/api/")
+		pathParts := strings.Split(apiPath, "/")
+		log.Printf("[pathParts]: %s", pathParts)
+		if len(pathParts) < 3 {
+			log.Printf("[错误] 无效的URL路径: %s", r.URL.Path)
+			http.Error(w, "Invalid URL path", http.StatusBadRequest)
+			return
+		}
+		taskId := pathParts[len(pathParts)-2]
+		log.Printf("[提取] 从URL中提取的task_id: %s", taskId)
+		err := models.UpdateMessageStopStatus(taskId, true)
+		if err != nil {
+			log.Printf("[错误]保存stop 状态到数据库失败: %v", err)
 		}
 	}
 
@@ -147,10 +197,13 @@ func (pc *ProxyController) ProxyToDify(w http.ResponseWriter, r *http.Request) {
 
 	// 检查是否为流式响应
 	if strings.Contains(contentType, "text/event-stream") {
-		pc.handleStreamResponse(w, difyResp, userID, sessionID, query, conversationID)
+		pc.handleStreamResponse(w, difyResp, userID, sessionID, query, conversationID, currentID)
 	} else {
-		pc.handleNormalResponse(w, difyResp, userID, sessionID, query, conversationID, apiPath)
+		pc.handleNormalResponse(w, difyResp)
 	}
+	// if strings.Contains(apiPath, "chat-messages") && strings.Contains(apiPath, "/stop") && r.Method == "POST" {
+	// 	pc.handleStopResponse(difyResp, taskId)
+	// }
 }
 
 // HandleFeedbacks 处理消息反馈（点赞）请求
@@ -232,7 +285,7 @@ func (pc *ProxyController) handleCORS(w http.ResponseWriter) {
 }
 
 // 处理流式响应
-func (pc *ProxyController) handleStreamResponse(w http.ResponseWriter, difyResp *http.Response, userID, sessionID, query, conversationID string) {
+func (pc *ProxyController) handleStreamResponse(w http.ResponseWriter, difyResp *http.Response, userID, sessionID, query, conversationID, currentID string) {
 	// 流式响应处理
 	log.Println("[响应] 检测到流式响应，开始转发数据流...")
 
@@ -242,6 +295,9 @@ func (pc *ProxyController) handleStreamResponse(w http.ResponseWriter, difyResp 
 	// 用于累积流式响应的完整答案
 	var fullAnswer string
 	var messageID string
+	var task_id string
+	// 标记是否已经处理了第一条消息
+	var isFirstMessage bool = false
 
 	// 逐行读取并转发
 	for {
@@ -270,11 +326,27 @@ func (pc *ProxyController) handleStreamResponse(w http.ResponseWriter, difyResp 
 					if messageID == "" && chunk.MessageID != "" {
 						messageID = chunk.MessageID
 					}
+					if conversationID == uuid.Nil.String() && chunk.ConversationID != "" {
+						conversationID = chunk.ConversationID
+					}
+					if task_id == "" && chunk.TaskID != "" {
+						task_id = chunk.TaskID
+					}
+
+					// 在第一条消息时就更新数据库
+					if !isFirstMessage && sessionID != "" && query != "" && messageID != "" {
+						isFirstMessage = true
+						log.Printf("[数据库] 第一条流式消息: 会话ID=%s, 查询=%s, 对话ID=%s, 消息ID=%s, task_id=%s", sessionID, query, conversationID, messageID, task_id)
+						err := services.UpdateMessageToDB(currentID, "", conversationID, messageID, task_id)
+						if err != nil {
+							log.Printf("[错误] 保存第一条消息到数据库失败: %v", err)
+						}
+					}
 				}
 				// 如果是消息结束事件，保存到数据库
 				if chunk.Event == "message_end" && sessionID != "" && query != "" && fullAnswer != "" {
-					log.Printf("[数据库] 保存消息: 会话ID=%s, 查询=%s, 答案长度=%d, 对话ID=%s, 消息ID=%s", sessionID, query, len(fullAnswer), chunk.ConversationID, messageID)
-					err := services.SaveMessageToDB(sessionID, query, fullAnswer, userID, chunk.ConversationID, messageID)
+					log.Printf("[数据库] 更新消息: 会话ID=%s, 查询=%s, 答案长度=%d, 对话ID=%s, 消息ID=%s, task_id=%s", sessionID, query, len(fullAnswer), chunk.ConversationID, messageID, task_id)
+					err := services.UpdateMessageToDB(currentID, fullAnswer, conversationID, messageID, task_id)
 					if err != nil {
 						log.Printf("[错误] 保存消息到数据库失败: %v", err)
 					}
@@ -299,7 +371,7 @@ func (pc *ProxyController) handleStreamResponse(w http.ResponseWriter, difyResp 
 }
 
 // 处理普通响应
-func (pc *ProxyController) handleNormalResponse(w http.ResponseWriter, difyResp *http.Response, userID, sessionID, query, conversationID, apiPath string) {
+func (pc *ProxyController) handleNormalResponse(w http.ResponseWriter, difyResp *http.Response) {
 	// 非流式响应处理
 	respBodyBytes, err := io.ReadAll(difyResp.Body)
 	if err != nil {
@@ -308,26 +380,26 @@ func (pc *ProxyController) handleNormalResponse(w http.ResponseWriter, difyResp 
 	}
 
 	// 打印响应体内容（如果是文本格式）
-	contentType := difyResp.Header.Get("Content-Type")
-	if strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/") {
-		log.Printf("[响应] 响应体: %s", string(respBodyBytes))
+	// contentType := difyResp.Header.Get("Content-Type")
+	// if strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/") {
+	// 	log.Printf("[响应] 响应体: %s", string(respBodyBytes))
 
-		// 如果是chat-messages接口的响应，解析并保存到数据库
-		if strings.Contains(apiPath, "chat-messages") && sessionID != "" && query != "" {
-			var chatResponse types.ChatMessageResponse
-			if err := json.Unmarshal(respBodyBytes, &chatResponse); err == nil {
-				log.Printf("[数据库] 保存消息: 会话ID=%s, 查询=%s, 答案长度=%d, 对话ID=%s, 消息ID=%s", sessionID, query, len(chatResponse.Answer), chatResponse.ConversationID, chatResponse.MessageID)
-				err := services.SaveMessageToDB(sessionID, query, chatResponse.Answer, userID, chatResponse.ConversationID, chatResponse.MessageID)
-				if err != nil {
-					log.Printf("[错误] 保存消息到数据库失败: %v", err)
-				}
-			} else {
-				log.Printf("[错误] 解析chat-messages响应失败: %v", err)
-			}
-		}
-	} else {
-		log.Printf("[响应] 响应体: 二进制数据或非文本格式 (Content-Type: %s)", contentType)
-	}
+	// 	// 如果是chat-messages接口的响应，解析并保存到数据库
+	// 	if strings.Contains(apiPath, "chat-messages") && sessionID != "" && query != "" {
+	// 		var chatResponse types.ChatMessageResponse
+	// 		if err := json.Unmarshal(respBodyBytes, &chatResponse); err == nil {
+	// 			log.Printf("[数据库] 保存消息: 会话ID=%s, 查询=%s, 答案长度=%d, 对话ID=%s, 消息ID=%s", sessionID, query, len(chatResponse.Answer), chatResponse.ConversationID, chatResponse.MessageID)
+	// 			err := services.SaveMessageToDB(sessionID, query, chatResponse.Answer, userID, chatResponse.ConversationID, chatResponse.MessageID)
+	// 			if err != nil {
+	// 				log.Printf("[错误] 保存消息到数据库失败: %v", err)
+	// 			}
+	// 		} else {
+	// 			log.Printf("[错误] 解析chat-messages响应失败: %v", err)
+	// 		}
+	// 	}
+	// } else {
+	// 	log.Printf("[响应] 响应体: 二进制数据或非文本格式 (Content-Type: %s)", contentType)
+	// }
 
 	// 重新创建一个新的响应体，因为原来的已经被读取
 	difyResp.Body = io.NopCloser(bytes.NewBuffer(respBodyBytes))
@@ -336,5 +408,25 @@ func (pc *ProxyController) handleNormalResponse(w http.ResponseWriter, difyResp 
 	_, err = io.Copy(w, difyResp.Body)
 	if err != nil {
 		log.Printf("[错误] 复制响应体失败: %v", err)
+	}
+}
+
+func (pc *ProxyController) handleStopResponse(difyResp *http.Response, taskId string) {
+	respBodyBytes, err := io.ReadAll(difyResp.Body)
+	if err != nil {
+		log.Printf("[错误]读取响应体失败: %v", err)
+		return
+	}
+	var stopResponse types.StopResponse
+	if err := json.Unmarshal(respBodyBytes, &stopResponse); err == nil {
+		if stopResponse.Result == "success" {
+			log.Printf("[数据库] 更新消息: task_id=%s", taskId)
+			err := models.UpdateMessageStopStatus(taskId, true)
+			if err != nil {
+				log.Printf("[错误]保存stop 状态到数据库失败: %v", err)
+			}
+		}
+	} else {
+		log.Printf("[错误]解析stop-messages响应失败: %v", err)
 	}
 }

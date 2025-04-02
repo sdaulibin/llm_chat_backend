@@ -16,10 +16,7 @@ pipeline {
     // 构建参数
     parameters {
         string(name: 'projectName', defaultValue: 'sllb', description: 'project name')
-        string(name: 'originImage', defaultValue: '', description: 'test env image name,need to be taged to prd image name')
         string(name: 'tag', defaultValue: '', description: 'image tag')
-        string(name: 'imageFileName', defaultValue: 'xxx.tar', description: 'image tar name')
-        string(name: 'chartFileName', defaultValue: 'xxx.tar', description: 'image tar name')
         string(name: 'ftpCredential', defaultValue: 'xyk-prd-ftp-credential', description: 'ftp credential')
         string(name: 'ftpPath', defaultValue: '', description: 'a ftp relative path')
         string(name: 'ftpAddr', defaultValue: '10.1.89.31', description: 'ftp ip address')
@@ -29,8 +26,19 @@ pipeline {
         string(name: 'DESTINATION_KEY', defaultValue: "qdccb\\.cn/role", description: '要部署的目标机器')
         string(name: 'DESTINATION_VALUE', defaultValue: 'star', description: '要部署的目标机器')
         string(name: 'HELM_NS', defaultValue: 'star', description: 'k8s namespace')
-        string(name: 'ingress', defaultValue: 'nginx', description: 'ingress class name')
+        string(name: 'ingress', defaultValue: 'nginx-star-prd', description: 'ingress class name')
         string(name: 'replicas', defaultValue: '2', description: 'replica count')
+        string(name: 'ingressHost', defaultValue: 'aisit.qdccb.cn', description: 'ingress host')
+        string(name: 'DIFY_API_BASE_URL', defaultValue: 'http://localhost/', description: 'Dify API 基础URL')
+        string(name: 'DIFY_API_KEY', defaultValue: 'app-2gyyyTpDY8OFhXB1mFB1MO3F', description: 'Dify API Key')
+        string(name: 'SERVER_PORT', defaultValue: '8090', description: '服务器端口')
+        string(name: 'DB_HOST', defaultValue: 'localhost', description: '数据库主机')
+        string(name: 'DB_PORT', defaultValue: '5432', description: '数据库端口')
+        string(name: 'DB_USER', defaultValue: 'postgres', description: '数据库用户')
+        string(name: 'DB_PASSWORD', defaultValue: 'difyai123456', description: '数据库密码')
+        string(name: 'DB_NAME', defaultValue: 'star_llm', description: '数据库名称')
+        string(name: 'DB_SSLMODE', defaultValue: 'disable', description: '数据库SSL模式')
+        string(name: 'ARCH', defaultValue: 'amd64', description: '架构')
     }
     stages {
 
@@ -42,7 +50,7 @@ pipeline {
                         def imageDownloadCommand = """
                             sshpass -p '${SFTP_PASSWORD}' sftp -o StrictHostKeyChecking=no ${SFTP_USER}@${env.ftpAddr} << EOF
                             cd ${env.ftpPath}
-                            get ${env.imageFileName}
+                            get ${env.projectName}-${env.tag}.tar 
                             bye
                             EOF
                         """
@@ -57,7 +65,7 @@ pipeline {
                         def chartDownloadCommand = """       
                             sshpass -p '${SFTP_PASSWORD}' sftp -o StrictHostKeyChecking=no ${SFTP_USER}@${env.ftpAddr} << EOF
                             cd ${env.ftpPath}
-                            get ${env.chartFileName}
+                            get ${env.projectName}-${env.tag}-chart.tar.gz
                             bye
                             EOF
                         """
@@ -71,37 +79,56 @@ pipeline {
 
                     sh """
                         export DOCKER_CONFIG="/kaniko/.docker/"
-                        nerdctl load -i ${env.imageFileName}
-                        nerdctl tag ${env.originImage} ${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName}:${tag} 
+                        nerdctl load -i ${env.projectName}-${env.tag}.tar
                         nerdctl --insecure-registry=true push \
-                            ${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName}:${tag} 
+                            ${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName}:${tag}-${env.ARCH} 
 
-                        tar -zxf ${env.chartFileName} -C .
+                        tar -zxf ${env.projectName}-${env.tag}-chart.tar.gz -C .
                     """
 
                     def node_selected = env.SPECIFY_NODE
                     if(node_selected == 'true') {
                         sh """
-                            helm upgrade --install ${env.projectName} \
-                            deploy/charts --namespace ${env.HELM_NS} --create-namespace \
-                            -f deploy/charts/values.yaml --set nodeSelector."${env.DESTINATION_KEY}"="${env.DESTINATION_VALUE}" \
-                            --set image.repository=${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName} \
-                            --set image.tag=${tag} \
-                            --set ingress.className=${env.ingress} \
-                            --set replicaCount=${env.replicas} 
+                           export DOCKER_CONFIG="/kaniko/.docker/"
+                           helm upgrade --install ${env.projectName} \\
+                           deploy/charts --namespace ${env.HELM_NS} --create-namespace \\
+                           -f deploy/charts/values.yaml --set nodeSelector."${env.DESTINATION_KEY}"="${env.DESTINATION_VALUE}" \\
+                           --set image.repository=${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName} \\
+                           --set ingress.className=${env.ingress} \\
+                           --set image.tag=${env.tag}-${env.ARCH} \\
+                           --set ingress.hosts[0].host=${env.ingressHost} \\
+                           --set replicaCount=${env.replicas} \\
+                           --set envs[0].name="DIFY_API_BASE_URL" --set envs[0].value=\\\"${env.DIFY_API_BASE_URL}\\\" \\
+                           --set envs[1].name="DIFY_API_KEY" --set envs[1].value=\\\"${env.DIFY_API_KEY}\\\" \\
+                           --set envs[2].name="SERVER_PORT" --set envs[2].value=\\\"${env.SERVER_PORT}\\\" \\
+                           --set envs[3].name="DB_HOST" --set envs[3].value=\\\"${env.DB_HOST}\\\" \\
+                           --set envs[4].name="DB_PORT" --set envs[4].value=\\\"${env.DB_PORT}\\\" \\
+                           --set envs[5].name="DB_USER" --set envs[5].value=\\\"${env.DB_USER}\\\" \\
+                           --set envs[6].name="DB_PASSWORD" --set envs[6].value=\\\"${env.DB_PASSWORD}\\\" \\
+                           --set envs[7].name="DB_NAME" --set envs[7].value=\\\"${env.DB_NAME}\\\" \\
+                           --set envs[8].name="DB_SSLMODE" --set envs[8].value=\\\"${env.DB_SSLMODE}\\\"
                         """
                     } else {
                         sh """
-                            helm upgrade --install ${env.projectName} \
-                            deploy/charts --namespace ${env.HELM_NS} --create-namespace \
-                            -f deploy/charts/values.yaml \
-                            --set image.repository=${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName} \
-                            --set image.tag=${tag} \
-                            --set ingress.className=${env.ingress} \
-                            --set replicaCount=${env.replicas} 
+                           helm upgrade --install ${env.projectName} \\
+                           deploy/charts --namespace ${env.HELM_NS} --create-namespace \\
+                           -f deploy/charts/values.yaml \\
+                           --set image.repository=${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.projectName} \\
+                           --set image.tag=${env.tag}-${env.ARCH} \\
+                           --set ingress.className=${env.ingress} \\
+                           --set ingress.hosts[0].host=${env.ingressHost} \\
+                           --set replicaCount=${env.replicas} \\
+                           --set envs[0].name="DIFY_API_BASE_URL" --set envs[0].value=\\\"${env.DIFY_API_BASE_URL}\\\" \\
+                           --set envs[1].name="DIFY_API_KEY" --set envs[1].value=\\\"${env.DIFY_API_KEY}\\\" \\
+                           --set envs[2].name="SERVER_PORT" --set envs[2].value=\\\"${env.SERVER_PORT}\\\" \\
+                           --set envs[3].name="DB_HOST" --set envs[3].value=\\\"${env.DB_HOST}\\\" \\
+                           --set envs[4].name="DB_PORT" --set envs[4].value=\\\"${env.DB_PORT}\\\" \\
+                           --set envs[5].name="DB_USER" --set envs[5].value=\\\"${env.DB_USER}\\\" \\
+                           --set envs[6].name="DB_PASSWORD" --set envs[6].value=\\\"${env.DB_PASSWORD}\\\" \\
+                           --set envs[7].name="DB_NAME" --set envs[7].value=\\\"${env.DB_NAME}\\\" \\
+                           --set envs[8].name="DB_SSLMODE" --set envs[8].value=\\\"${env.DB_SSLMODE}\\\"
                         """
                     }
-                    
                     sh """
                         helm get manifest --namespace ${env.HELM_NS} ${env.projectName}
                     """

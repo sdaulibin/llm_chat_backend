@@ -1,7 +1,7 @@
 # 构建阶段
 
-FROM golang:1.20.2 AS builder
-# FROM harbor.devops.qdb.com/devops/golang:1.20.2 AS builder
+# FROM golang:1.20.2 AS builder
+FROM harbor.devops.qdb.com/devops/golang:1.20.2 AS builder
 
 # 设置工作目录
 WORKDIR /app
@@ -12,8 +12,8 @@ ARG RELEASE_VERSION
 RUN RELEASE_VERSION=${RELEASE_VERSION} make build-star_llm_backend.amd64
 
 # 运行阶段
-# FROM harbor.devops.qdb.com/devops/alpine:3.12
-FROM alpine:3.12
+FROM harbor.devops.qdb.com/devops/alpine:3.12
+# FROM alpine:3.12
 # 设置工作目录
 WORKDIR /app
 

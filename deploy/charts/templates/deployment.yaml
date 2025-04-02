@@ -24,7 +24,9 @@ spec:
                 {{- include "sllb.selectorLabels" . | nindent 16 }}
             topologyKey: "kubernetes.io/hostname"
       dnsPolicy: ClusterFirstWithHostNet
+      {{- if .Values.hostNetwork }} 
       hostNetwork: {{ .Values.hostNetwork}}
+      {{- end }}
       {{- if .Values.hostAliases }}
       hostAliases:
         {{- range $value := .Values.hostAliases }}

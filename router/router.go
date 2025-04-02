@@ -36,6 +36,16 @@ func (r *Router) SetupRoutes() {
 		}
 	})
 
+	// 处理/v1/路径下的请求
+	http.HandleFunc("/chat/api/v1/", func(w http.ResponseWriter, req *http.Request) {
+		// 检查是否为feedbacks接口
+		if strings.Contains(req.URL.Path, "/chat-messages") {
+			r.ProxyController.ProxyToDify(w, req)
+		} else {
+			// 拒绝处理其他请求
+			http.Error(w, "不支持的请求路径", http.StatusNotFound)
+		}
+	})
 	// 处理所有其他请求
-	http.HandleFunc("/", r.ProxyController.ProxyToDify)
+	//http.HandleFunc("/", r.ProxyController.ProxyToDify)
 }

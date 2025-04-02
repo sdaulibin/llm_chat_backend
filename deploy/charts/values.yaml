@@ -23,7 +23,7 @@ command: ["/app/star_llm_backend"]
 
 ports:  
   - name: sllb  #第一个为业务容器port
-    containerPort: 8080
+    containerPort: 8090
     protocol: TCP
 
 service:
@@ -41,6 +41,17 @@ ingress:
     nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
     nginx.ingress.kubernetes.io/set-real-ip-from: 0.0.0.0/0
     nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 2g
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/client-body-buffer-size: "128m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-tcp-nodelay: "true"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/connection-proxy-header: "keep-alive"
+    nginx.ingress.kubernetes.io/proxy-transfer-encoding: "true"
   hosts:
     - host: sllb.devops.qdb.com
       paths:
@@ -64,11 +75,11 @@ resources:
   # resources, such as Minikube. If you do want to specify resources, uncomment the following
   # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
   limits:
-    cpu: 2000m
-    memory: 2048Mi
+    cpu: 6
+    memory: 12Gi
   requests:
-    cpu: 2000m
-    memory: 2048Mi
+    cpu: 4
+    memory: 8Gi
 
 #nodeSelector:
   #kubernetes.io/hostname: "devwork1"

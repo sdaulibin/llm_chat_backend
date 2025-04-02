@@ -1,5 +1,12 @@
 package types
 
+// FileInfo 定义文件信息结构体
+type FileInfo struct {
+	Type           string `json:"type"`
+	TransferMethod string `json:"transfer_method"`
+	UploadFileID   string `json:"upload_file_id"`
+}
+
 // ChatMessageRequest 定义聊天消息请求结构体
 type ChatMessageRequest struct {
 	Query          string                 `json:"query"`
@@ -8,6 +15,9 @@ type ChatMessageRequest struct {
 	User           string                 `json:"user"`
 	ConversationID string                 `json:"conversation_id"`
 	SeesionID      string                 `json:"session_id"`
+	TaskID         string                 `json:"task_id"`
+	CurrentID      string                 `json:"current_id"`
+	Files          []FileInfo             `json:"files"`
 }
 
 // ChatMessageResponse 定义聊天消息响应结构体
@@ -27,4 +37,8 @@ type StreamChunk struct {
 	ConversationID string `json:"conversation_id"`
 	Answer         string `json:"answer"`
 	CreatedAt      int64  `json:"created_at"`
+}
+
+type StopResponse struct {
+	Result string `json:"result"`
 }
